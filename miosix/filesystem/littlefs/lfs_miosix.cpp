@@ -190,7 +190,9 @@ int miosix::LittleFS::rmdir(StringPart &name) {
 }
 
 miosix::LittleFS::~LittleFS() {
+#ifdef LFS_MIOSIX_IN_RAM
   lfs_rambd_destroy(&config);
+#endif
   if (mountFailed())
     return;
   int err = lfs_unmount(&lfs);
@@ -261,6 +263,7 @@ int miosix::LittleFSFile::fstat(struct stat *pstat) const {
 }
 
 int miosix::LittleFSDirectory::getdents(void *dp, int len) {
+  assert(isOpen);
   if (len < minimumBufferSize) {
     return -EINVAL;
   }
@@ -305,7 +308,7 @@ int miosix::miosix_block_device_read(const lfs_config *c, lfs_block_t block,
                                      lfs_off_t off, void *buffer,
                                      lfs_size_t size) {
   // TODO: Implement using MIOSIX APIs
-  FileBase *drv = static_cast<FileBase *>(c->context);
+  //FileBase *drv = static_cast<FileBase *>(c->context);
   return -ENOENT;
 }
 
@@ -313,18 +316,18 @@ int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
                                      lfs_off_t off, const void *buffer,
                                      lfs_size_t size) {
   // TODO: Implement using MIOSIX APIs
-  FileBase *drv = static_cast<FileBase *>(c->context);
+  //FileBase *drv = static_cast<FileBase *>(c->context);
   return -ENOENT;
 }
 
 int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
   // TODO: Implement using MIOSIX APIs
-  FileBase *drv = static_cast<FileBase *>(c->context);
+  //FileBase *drv = static_cast<FileBase *>(c->context);
   return -ENOENT;
 }
 
 int miosix::miosix_block_device_sync(const lfs_config *c) {
   // TODO: Implement using MIOSIX APIs
-  FileBase *drv = static_cast<FileBase *>(c->context);
+  //FileBase *drv = static_cast<FileBase *>(c->context);
   return -ENOENT;
 }
