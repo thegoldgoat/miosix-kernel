@@ -2,6 +2,7 @@
 #include "filesystem/stringpart.h"
 #include "kernel/logging.h"
 #include <fcntl.h>
+#include <memory>
 
 // TODO: Remove this
 #define LFS_MIOSIX_IN_RAM
@@ -307,27 +308,36 @@ int miosix::LittleFSDirectory::getdents(void *dp, int len) {
 int miosix::miosix_block_device_read(const lfs_config *c, lfs_block_t block,
                                      lfs_off_t off, void *buffer,
                                      lfs_size_t size) {
-  // TODO: Implement using MIOSIX APIs
-  //FileBase *drv = static_cast<FileBase *>(c->context);
-  return -ENOENT;
+  FileBase *drv = static_cast<FileBase *>(c->context);
+
+  if(drv->lseek(static_cast<off_t>((block)*c->block_size) + off,SEEK_SET)<0) return LFS_ERR_IO;
+    if(drv->read(buffer,size*c->block_size)!=static_cast<ssize_t>(size)*c->block_size) return LFS_ERR_IO;
+    return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
                                      lfs_off_t off, const void *buffer,
                                      lfs_size_t size) {
-  // TODO: Implement using MIOSIX APIs
-  //FileBase *drv = static_cast<FileBase *>(c->context);
-  return -ENOENT;
+  FileBase *drv = static_cast<FileBase *>(c->context);
+
+  if(drv->lseek(static_cast<off_t>((block)*c->block_size) + off,SEEK_SET)<0) return LFS_ERR_IO;
+    if(drv->write(buffer,size*c->block_size)!=static_cast<ssize_t>(size)*c->block_size) return LFS_ERR_IO;
+    return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
-  // TODO: Implement using MIOSIX APIs
-  //FileBase *drv = static_cast<FileBase *>(c->context);
-  return -ENOENT;
+  FileBase *drv = static_cast<FileBase *>(c->context);
+
+  std::unique_ptr<int[]> buffer(new int[c->block_size]);
+  memset(buffer.get(), 0, c->block_size);
+
+  if(drv->lseek(static_cast<off_t>((block)*c->block_size),SEEK_SET)<0) return LFS_ERR_IO;
+    if(drv->write(buffer.get(),c->block_size)!=c->block_size) return LFS_ERR_IO;
+    return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_sync(const lfs_config *c) {
   // TODO: Implement using MIOSIX APIs
-  //FileBase *drv = static_cast<FileBase *>(c->context);
+  FileBase *drv = static_cast<FileBase *>(c->context);
   return -ENOENT;
 }
