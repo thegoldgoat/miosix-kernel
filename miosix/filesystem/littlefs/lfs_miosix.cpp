@@ -4,11 +4,10 @@
 #include <fcntl.h>
 #include <memory>
 
-// TODO: Remove this
-#define LFS_MIOSIX_IN_RAM
+// Uncomment to enable mounting LFS in ram
+// #define LFS_MIOSIX_IN_RAM
 
 #ifdef LFS_MIOSIX_IN_RAM
-#include "bd/lfs_rambd.c"
 #include "bd/lfs_rambd.h"
 #endif
 
@@ -24,7 +23,7 @@ const struct lfs_config LITTLEFS_CONFIG = {
     // block device configuration
     .read_size = 16,
     .prog_size = 16,
-    .block_size = 4096,
+    .block_size = 512,
     .block_count = 128,
     .block_cycles = 500,
     .cache_size = 16,
@@ -34,7 +33,7 @@ const struct lfs_config LITTLEFS_CONFIG = {
 struct lfs_rambd_config LFS_FILE_CONFIG = {
     .read_size = 16,
     .prog_size = 16,
-    .erase_size = 4096,
+    .erase_size = 512,
     .erase_count = 128,
 };
 
@@ -310,9 +309,12 @@ int miosix::miosix_block_device_read(const lfs_config *c, lfs_block_t block,
                                      lfs_size_t size) {
   FileBase *drv = static_cast<FileBase *>(c->context);
 
-  if(drv->lseek(static_cast<off_t>((block)*c->block_size) + off,SEEK_SET)<0) return LFS_ERR_IO;
-    if(drv->read(buffer,size*c->block_size)!=static_cast<ssize_t>(size)*c->block_size) return LFS_ERR_IO;
-    return LFS_ERR_OK;
+  if (drv->lseek(static_cast<off_t>((block)*c->block_size) + off, SEEK_SET) < 0)
+    return LFS_ERR_IO;
+  if (drv->read(buffer, size * c->block_size) !=
+      static_cast<ssize_t>(size) * c->block_size)
+    return LFS_ERR_IO;
+  return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
@@ -320,9 +322,12 @@ int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
                                      lfs_size_t size) {
   FileBase *drv = static_cast<FileBase *>(c->context);
 
-  if(drv->lseek(static_cast<off_t>((block)*c->block_size) + off,SEEK_SET)<0) return LFS_ERR_IO;
-    if(drv->write(buffer,size*c->block_size)!=static_cast<ssize_t>(size)*c->block_size) return LFS_ERR_IO;
-    return LFS_ERR_OK;
+  if (drv->lseek(static_cast<off_t>((block)*c->block_size) + off, SEEK_SET) < 0)
+    return LFS_ERR_IO;
+  if (drv->write(buffer, size * c->block_size) !=
+      static_cast<ssize_t>(size) * c->block_size)
+    return LFS_ERR_IO;
+  return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
@@ -331,9 +336,11 @@ int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
   std::unique_ptr<int[]> buffer(new int[c->block_size]);
   memset(buffer.get(), 0, c->block_size);
 
-  if(drv->lseek(static_cast<off_t>((block)*c->block_size),SEEK_SET)<0) return LFS_ERR_IO;
-    if(drv->write(buffer.get(),c->block_size)!=c->block_size) return LFS_ERR_IO;
-    return LFS_ERR_OK;
+  if (drv->lseek(static_cast<off_t>((block)*c->block_size), SEEK_SET) < 0)
+    return LFS_ERR_IO;
+  if (drv->write(buffer.get(), c->block_size) != c->block_size)
+    return LFS_ERR_IO;
+  return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_sync(const lfs_config *c) {
