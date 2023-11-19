@@ -1,4 +1,5 @@
 #include "lfs_miosix.h"
+#include "filesystem/ioctl.h"
 #include "filesystem/stringpart.h"
 #include "kernel/logging.h"
 #include <fcntl.h>
@@ -19,15 +20,13 @@ const struct lfs_config LITTLEFS_CONFIG = {
     .erase = nullptr,
     .sync = nullptr,
 
-    // TODO: Check this are OK for Miosix
     // block device configuration
-    .read_size = 16,
-    .prog_size = 16,
+    .read_size = 512,
+    .prog_size = 512,
     .block_size = 512,
-    .block_count = 128,
     .block_cycles = 500,
-    .cache_size = 16,
-    .lookahead_size = 16,
+    .cache_size = 512,
+    .lookahead_size = 512,
 };
 
 struct lfs_rambd_config LFS_FILE_CONFIG = {
@@ -309,11 +308,13 @@ int miosix::miosix_block_device_read(const lfs_config *c, lfs_block_t block,
                                      lfs_size_t size) {
   FileBase *drv = static_cast<FileBase *>(c->context);
 
-  if (drv->lseek(static_cast<off_t>((block)*c->block_size) + off, SEEK_SET) < 0)
+  if (drv->lseek(static_cast<off_t>(c->block_size * block + off), SEEK_SET) <
+      0) {
     return LFS_ERR_IO;
-  if (drv->read(buffer, size * c->block_size) !=
-      static_cast<ssize_t>(size) * c->block_size)
+  }
+  if (drv->read(buffer, size) != static_cast<ssize_t>(size)) {
     return LFS_ERR_IO;
+  }
   return LFS_ERR_OK;
 }
 
@@ -322,11 +323,13 @@ int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
                                      lfs_size_t size) {
   FileBase *drv = static_cast<FileBase *>(c->context);
 
-  if (drv->lseek(static_cast<off_t>((block)*c->block_size) + off, SEEK_SET) < 0)
+  if (drv->lseek(static_cast<off_t>(c->block_size * block + off), SEEK_SET) <
+      0) {
     return LFS_ERR_IO;
-  if (drv->write(buffer, size * c->block_size) !=
-      static_cast<ssize_t>(size) * c->block_size)
+  }
+  if (drv->write(buffer, size) != static_cast<ssize_t>(size)) {
     return LFS_ERR_IO;
+  }
   return LFS_ERR_OK;
 }
 
@@ -336,15 +339,20 @@ int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
   std::unique_ptr<int[]> buffer(new int[c->block_size]);
   memset(buffer.get(), 0, c->block_size);
 
-  if (drv->lseek(static_cast<off_t>((block)*c->block_size), SEEK_SET) < 0)
+  if (drv->lseek(static_cast<off_t>((block)*c->block_size), SEEK_SET) < 0) {
     return LFS_ERR_IO;
-  if (drv->write(buffer.get(), c->block_size) != c->block_size)
+  }
+  if (drv->write(buffer.get(), c->block_size) != c->block_size) {
     return LFS_ERR_IO;
+  }
   return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_sync(const lfs_config *c) {
-  // TODO: Implement using MIOSIX APIs
   FileBase *drv = static_cast<FileBase *>(c->context);
-  return -ENOENT;
+
+  if (drv->ioctl(IOCTL_SYNC, nullptr) != 0) {
+    return LFS_ERR_IO;
+  }
+  return -LFS_ERR_OK;
 }
