@@ -308,6 +308,7 @@ int miosix::miosix_block_device_read(const lfs_config *c, lfs_block_t block,
                                      lfs_size_t size) {
   FileBase *drv = static_cast<FileBase *>(c->context);
 
+
   if (drv->lseek(static_cast<off_t>(c->block_size * block + off), SEEK_SET) <
       0) {
     return LFS_ERR_IO;
