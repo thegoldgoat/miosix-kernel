@@ -5,13 +5,6 @@
 #include <fcntl.h>
 #include <memory>
 
-// Uncomment to enable mounting LFS in ram
-// #define LFS_MIOSIX_IN_RAM
-
-#ifdef LFS_MIOSIX_IN_RAM
-#include "bd/lfs_rambd.h"
-#endif
-
 // configuration of the filesystem is provided by this struct
 const struct lfs_config LITTLEFS_CONFIG = {
     // block device operations
@@ -29,46 +22,25 @@ const struct lfs_config LITTLEFS_CONFIG = {
     .lookahead_size = 512,
 };
 
-struct lfs_rambd_config LFS_FILE_CONFIG = {
-    .read_size = 16,
-    .prog_size = 16,
-    .erase_size = 512,
-    .erase_count = 128,
-};
-
-miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk) {
+miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
+    : // Put the drive instance into the config context. Note that a raw pointer
+      // is passed, but the object is kept alive by the intrusive_ref_ptr in the
+      // drv member variable. Hence, the object is deleted when the LittleFS
+      // object is deleted.
+      context(disk.get()) {
   int err;
   drv = disk;
   config = LITTLEFS_CONFIG;
-#ifdef LFS_MIOSIX_IN_RAM
-  config.read = lfs_rambd_read;
-  config.prog = lfs_rambd_prog;
-  config.erase = lfs_rambd_erase;
-  config.sync = lfs_rambd_sync;
-  config.context = &this->rambd;
-  err = lfs_rambd_create(&config, &LFS_FILE_CONFIG);
-  if (err) {
-    bootlog("Error creating filebd: %d\n", err);
-    mountError = convert_lfs_error_into_posix(err);
-    return;
-  }
-  err = lfs_format(&lfs, &config);
-  if (err) {
-    bootlog("Error formatting LittleFS: %d\n", err);
-    mountError = convert_lfs_error_into_posix(err);
-    return;
-  }
-#else
-  // Put the drive instance into the config context. Note that a raw pointer is
-  // passed, but the object is kept alive by the intrusive_ref_ptr in the drv
-  // member variable. Hence, the object is deleted when the LittleFS object is
-  // deleted.
-  config.context = drv.get();
+  config.context = &context;
+
   config.read = miosix_block_device_read;
   config.prog = miosix_block_device_prog;
   config.erase = miosix_block_device_erase;
   config.sync = miosix_block_device_sync;
-#endif
+
+  config.lock = miosix_lfs_lock;
+  config.unlock = miosix_lfs_unlock;
+
   err = lfs_mount(&lfs, &config);
   mountError = convert_lfs_error_into_posix(err);
 }
@@ -189,9 +161,6 @@ int miosix::LittleFS::rmdir(StringPart &name) {
 }
 
 miosix::LittleFS::~LittleFS() {
-#ifdef LFS_MIOSIX_IN_RAM
-  lfs_rambd_destroy(&config);
-#endif
   if (mountFailed())
     return;
   int err = lfs_unmount(&lfs);
@@ -303,11 +272,14 @@ int miosix::LittleFSDirectory::getdents(void *dp, int len) {
   return bufferCurPos - bufferBegin;
 }
 
+#define GET_DRIVER_FROM_LFS_CONTEXT(config)                                    \
+  static_cast<FileBase *>(                                                     \
+      static_cast<lfs_driver_context *>(config->context)->disk);
+
 int miosix::miosix_block_device_read(const lfs_config *c, lfs_block_t block,
                                      lfs_off_t off, void *buffer,
                                      lfs_size_t size) {
-  FileBase *drv = static_cast<FileBase *>(c->context);
-
+  FileBase *drv = GET_DRIVER_FROM_LFS_CONTEXT(c);
 
   if (drv->lseek(static_cast<off_t>(c->block_size * block + off), SEEK_SET) <
       0) {
@@ -322,7 +294,7 @@ int miosix::miosix_block_device_read(const lfs_config *c, lfs_block_t block,
 int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
                                      lfs_off_t off, const void *buffer,
                                      lfs_size_t size) {
-  FileBase *drv = static_cast<FileBase *>(c->context);
+  FileBase *drv = GET_DRIVER_FROM_LFS_CONTEXT(c);
 
   if (drv->lseek(static_cast<off_t>(c->block_size * block + off), SEEK_SET) <
       0) {
@@ -335,7 +307,7 @@ int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
 }
 
 int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
-  FileBase *drv = static_cast<FileBase *>(c->context);
+  FileBase *drv = GET_DRIVER_FROM_LFS_CONTEXT(c);
   int err = LFS_ERR_OK;
 
   int *buffer = new int[c->block_size];
@@ -357,10 +329,24 @@ exit:
 }
 
 int miosix::miosix_block_device_sync(const lfs_config *c) {
-  FileBase *drv = static_cast<FileBase *>(c->context);
+  FileBase *drv = GET_DRIVER_FROM_LFS_CONTEXT(c);
 
   if (drv->ioctl(IOCTL_SYNC, nullptr) != 0) {
     return LFS_ERR_IO;
   }
   return -LFS_ERR_OK;
+}
+
+#define GET_MUTEX_FROM_LFS_CONTEXT(config)                                     \
+  static_cast<miosix::Mutex *>(                                                \
+      &static_cast<lfs_driver_context *>(config->context)->mutex)
+
+int miosix::miosix_lfs_lock(const lfs_config *c) {
+  GET_MUTEX_FROM_LFS_CONTEXT(c)->lock();
+  return LFS_ERR_OK;
+}
+
+int miosix::miosix_lfs_unlock(const lfs_config *c) {
+  GET_MUTEX_FROM_LFS_CONTEXT(c)->unlock();
+  return LFS_ERR_OK;
 }

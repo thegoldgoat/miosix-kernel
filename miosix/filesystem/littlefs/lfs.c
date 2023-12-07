@@ -5739,14 +5739,15 @@ cleanup:
 
 // Here we can add tracing/thread safety easily
 
-// Thread-safe wrappers if enabled
-#ifdef LFS_THREADSAFE
+// [!] Patched for miosix: always thread safe
+/// Thread-safe wrappers if enabled
+/// #ifdef LFS_THREADSAFE
 #define LFS_LOCK(cfg)   cfg->lock(cfg)
 #define LFS_UNLOCK(cfg) cfg->unlock(cfg)
-#else
-#define LFS_LOCK(cfg)   ((void)cfg, 0)
-#define LFS_UNLOCK(cfg) ((void)cfg)
-#endif
+/// #else
+/// #define LFS_LOCK(cfg)   ((void)cfg, 0)
+/// #define LFS_UNLOCK(cfg) ((void)cfg)
+/// #endif
 
 // Public API
 #ifndef LFS_READONLY

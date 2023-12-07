@@ -181,7 +181,8 @@ struct lfs_config {
     // are propagated to the user.
     int (*sync)(const struct lfs_config *c);
 
-#ifdef LFS_THREADSAFE
+// [!] Patched for miosix: always thread safe
+//#ifdef LFS_THREADSAFE
     // Lock the underlying block device. Negative error codes
     // are propagated to the user.
     int (*lock)(const struct lfs_config *c);
@@ -189,7 +190,7 @@ struct lfs_config {
     // Unlock the underlying block device. Negative error codes
     // are propagated to the user.
     int (*unlock)(const struct lfs_config *c);
-#endif
+//#endif
 
     // Minimum size of a block read in bytes. All read operations will be a
     // multiple of this value.
