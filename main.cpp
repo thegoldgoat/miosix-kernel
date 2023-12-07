@@ -3,22 +3,41 @@
 #include <cstdio>
 #include <dirent.h>
 #include <errno.h>
+#include <thread>
+#include <vector>
 
 using namespace std;
 using namespace miosix;
 
-void tryReadFile() {
-  iprintf("Trying to read /sd/test.txt\n");
+void tryReadFile(int fileNumber) {
+  char filename[20];
+  snprintf(filename, sizeof(filename), "/sd/test%d.txt", fileNumber);
+  iprintf("Trying to read %s\n", filename);
   // Try to read the file
-  FILE *fp = fopen("/sd/test.txt", "r");
+  FILE *fp = fopen(filename, "r");
   // Check file is open
   if (fp != NULL) {
     char buf[100];
     fgets(buf, 100, fp);
-    iprintf("File content: %s\n", buf);
+    iprintf("'%s' content: %s\n", filename, buf);
     fclose(fp);
   } else {
-    perror("Error opening /sd/test.txt in readmode");
+    perror(filename);
+  }
+}
+
+void tryWriteFile(int fileNumber) {
+  char filename[20];
+  snprintf(filename, sizeof(filename), "/sd/test%d.txt", fileNumber);
+  iprintf("Trying to write %s\n", filename);
+  // Try to write the file
+  FILE *fp = fopen(filename, "w");
+  // Check file is open
+  if (fp != NULL) {
+    fprintf(fp, "Hello world %d!", fileNumber);
+    fclose(fp);
+  } else {
+    perror(filename);
   }
 }
 
@@ -48,20 +67,47 @@ int main() {
   }
   closedir(dir);
 
-  tryReadFile();
+  tryReadFile(11);
+  tryWriteFile(11);
+  tryReadFile(11);
 
-  // Open a file and write something
-  iprintf("Writing to /sd/test.txt\n");
-  FILE *fp = fopen("/sd/test.txt", "w");
-  // Check file is open
-  if (fp == NULL) {
-    perror("Error opening /sd/test.txt in writemode");
-    return -1;
+  iprintf("Begin write test on multithreading\n");
+  vector<thread> threads;
+  for (int i = 0; i < MAX_OPEN_FILES - 3; i++) {
+    threads.emplace_back(thread(tryWriteFile, i));
   }
-  fprintf(fp, "Hello world!\n");
-  fclose(fp);
 
-  tryReadFile();
+  for (auto &t : threads) {
+    t.join();
+  }
+
+  iprintf("End write test on multithreading\n");
+
+  iprintf("Begin read test on multithreading\n");
+  threads.clear();
+
+  for (int i = 0; i < MAX_OPEN_FILES - 3; i++) {
+    threads.emplace_back(thread(tryReadFile, i));
+  }
+
+  for (auto &t : threads) {
+    t.join();
+  }
+
+  iprintf("End read test on multithreading\n");
+
+  iprintf("Begin mixed read/write test on multithreading\n");
+  threads.clear();
+  for (int i = 0; i < (MAX_OPEN_FILES - 3) / 2; i++) {
+    threads.emplace_back(thread(tryReadFile, i));
+    threads.emplace_back(thread(tryWriteFile, i));
+  }
+
+  for (auto &t : threads) {
+    t.join();
+  }
+
+  iprintf("End mixed read/write test on multithreading\n");
 
   iprintf("Main end\n");
 }
