@@ -336,17 +336,24 @@ int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
 
 int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
   FileBase *drv = static_cast<FileBase *>(c->context);
+  int err = LFS_ERR_OK;
 
-  std::unique_ptr<int[]> buffer(new int[c->block_size]);
-  memset(buffer.get(), 0, c->block_size);
+  int *buffer = new int[c->block_size];
+  memset(buffer, 0, c->block_size);
 
   if (drv->lseek(static_cast<off_t>((block)*c->block_size), SEEK_SET) < 0) {
-    return LFS_ERR_IO;
+    err = LFS_ERR_IO;
+    goto exit;
   }
-  if (drv->write(buffer.get(), c->block_size) != c->block_size) {
-    return LFS_ERR_IO;
+  if (drv->write(buffer, c->block_size) !=
+      static_cast<ssize_t>(c->block_size)) {
+    err = LFS_ERR_IO;
+    goto exit;
   }
-  return LFS_ERR_OK;
+
+exit:
+  delete[] buffer;
+  return err;
 }
 
 int miosix::miosix_block_device_sync(const lfs_config *c) {
