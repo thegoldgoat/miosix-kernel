@@ -85,7 +85,7 @@ int miosix::LittleFS::open_file(intrusive_ref_ptr<FileBase> &file,
 
   file = intrusive_ref_ptr<LittleFSFile>(
       new LittleFSFile(intrusive_ref_ptr<LittleFS>(this),
-                       std::move(lfs_file_obj), flags & O_SYNC));
+                       std::move(lfs_file_obj), flags & O_SYNC, name));
 
   return 0;
 }
@@ -217,14 +217,37 @@ int miosix::LittleFSFile::write(const void *buf, size_t count) {
 
 off_t miosix::LittleFSFile::lseek(off_t pos, int whence) {
   assert(isOpen());
-  // TODO: Implement using lfs APIs
-  return -ENOENT;
+
+  lfs_whence_flags whence_lfs;
+  switch (whence)
+  {
+  case SEEK_CUR:
+    whence_lfs = LFS_SEEK_CUR;
+    break; 
+  case SEEK_SET:
+    whence_lfs = LFS_SEEK_SET;
+    break;
+  case SEEK_END:
+    whence_lfs = LFS_SEEK_END;
+    break;
+  default:
+    return -EINVAL;
+    break;
+  }
+
+  LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
+  off_t lfs_off = static_cast<off_t>(lfs_file_seek(lfs_driver->getLfs(), file.get(), static_cast<lfs_off_t>(pos), whence_lfs));
+
+  return lfs_off;
 }
 
 int miosix::LittleFSFile::fstat(struct stat *pstat) const {
   assert(isOpen());
-  // TODO: Implement using lfs APIs
-  return -ENOENT;
+  
+  LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
+  lfs_driver->lstat(this->name, pstat);
+
+  return 0;
 }
 
 int miosix::LittleFSDirectory::getdents(void *dp, int len) {
