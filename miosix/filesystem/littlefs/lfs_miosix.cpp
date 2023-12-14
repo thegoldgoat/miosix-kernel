@@ -79,7 +79,7 @@ int miosix::LittleFS::open_directory(intrusive_ref_ptr<FileBase> &directory,
 int miosix::LittleFS::open_file(intrusive_ref_ptr<FileBase> &file,
                                 StringPart &name, int flags, int mode) {
   file = intrusive_ref_ptr<LittleFSFile>(
-      new LittleFSFile(intrusive_ref_ptr<LittleFS>(this), flags & O_SYNC));
+      new LittleFSFile(intrusive_ref_ptr<LittleFS>(this), flags & O_SYNC, name));
 
   int err = lfs_file_open(
       &lfs, static_cast<LittleFSFile *>(file.get())->getFileReference(),
@@ -246,8 +246,11 @@ off_t miosix::LittleFSFile::lseek(off_t pos, int whence) {
 
 int miosix::LittleFSFile::fstat(struct stat *pstat) const {
   assert(isOpen);
-  // TODO: Implement using lfs APIs
-  return -ENOENT;
+  
+  LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
+  lfs_driver->lstat(this->name, pstat);
+
+  return 0;
 }
 
 int miosix::LittleFSDirectory::getdents(void *dp, int len) {

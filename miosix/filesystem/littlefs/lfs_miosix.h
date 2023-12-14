@@ -167,8 +167,8 @@ public:
    * @param forceSync A boolean indicating whether to force synchronization
    * after writes
    */
-  LittleFSFile(intrusive_ref_ptr<LittleFS> parentFS, bool forceSync)
-      : FileBase(parentFS), forceSync(forceSync) {}
+  LittleFSFile(intrusive_ref_ptr<LittleFS> parentFS, bool forceSync, StringPart& name)
+      : FileBase(parentFS), forceSync(forceSync),  name(name) {}
 
   virtual int read(void *buf, size_t count) override;
   virtual int write(const void *buf, size_t count) override;
@@ -190,6 +190,7 @@ private:
   bool isOpen = false;
 
   lfs_file_t file;
+  StringPart& name;
   /// Force the file to be synced on every write
   bool forceSync;
 };
