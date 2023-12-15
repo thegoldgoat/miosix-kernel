@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <thread>
 #include <vector>
 
@@ -63,7 +65,22 @@ int main() {
   struct dirent *ent;
   iprintf("Files in /sd:\n");
   while ((ent = readdir(dir)) != NULL) {
-    iprintf("\tFound file: %s\n", ent->d_name);
+    char filename[200];
+    snprintf(filename, sizeof(filename), "/sd/%s", ent->d_name);
+    iprintf("\tFound file: '%s'\n", filename);
+    int foundFileFd = open(filename, O_RDONLY);
+    iprintf("\t\tFile descriptor: %d\n", foundFileFd);
+    if (foundFileFd < 0) {
+      perror("Error opening file");
+    } else {
+      struct stat pstat;
+      if (fstat(foundFileFd, &pstat) == 0) {
+        iprintf("\t\tFile size: %lld\n", pstat.st_size);
+      } else {
+        perror("Error getting file size");
+      }
+      close(foundFileFd);
+    }
   }
   closedir(dir);
 
@@ -71,7 +88,7 @@ int main() {
   tryWriteFile(11);
   tryReadFile(11);
 
-  iprintf("Begin write test on multithreading\n");
+  iprintf("--- Begin write test on multithreading ---\n");
   vector<thread> threads;
   for (int i = 0; i < MAX_OPEN_FILES - 3; i++) {
     threads.emplace_back(thread(tryWriteFile, i));
@@ -81,9 +98,9 @@ int main() {
     t.join();
   }
 
-  iprintf("End write test on multithreading\n");
+  iprintf("--- End write test on multithreading--- \n");
 
-  iprintf("Begin read test on multithreading\n");
+  iprintf("--- Begin read test on multithreading ---\n");
   threads.clear();
 
   for (int i = 0; i < MAX_OPEN_FILES - 3; i++) {
@@ -94,9 +111,9 @@ int main() {
     t.join();
   }
 
-  iprintf("End read test on multithreading\n");
+  iprintf("--- End read test on multithreading ---\n");
 
-  iprintf("Begin mixed read/write test on multithreading\n");
+  iprintf("--- Begin mixed read/write test on multithreading ---\n");
   threads.clear();
   for (int i = 0; i < (MAX_OPEN_FILES - 3) / 2; i++) {
     threads.emplace_back(thread(tryReadFile, i));
@@ -107,7 +124,7 @@ int main() {
     t.join();
   }
 
-  iprintf("End mixed read/write test on multithreading\n");
+  iprintf("--- End mixed read/write test on multithreading ---\n");
 
   iprintf("Main end\n");
 }

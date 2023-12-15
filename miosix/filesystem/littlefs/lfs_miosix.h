@@ -31,6 +31,7 @@
 #include "bd/lfs_rambd.h"
 #include "config/miosix_settings.h"
 #include "filesystem/file.h"
+#include "filesystem/stringpart.h"
 #include "kernel/sync.h"
 #include "lfs.h"
 #include <memory>
@@ -193,7 +194,7 @@ private:
 
   /// Force the file to be synced on every write
   bool forceSync;
-  StringPart &name;
+  StringPart name;
 };
 
 class LittleFSDirectory : public DirectoryBase {
