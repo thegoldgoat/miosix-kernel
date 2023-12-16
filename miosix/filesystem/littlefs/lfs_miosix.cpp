@@ -60,35 +60,32 @@ int miosix::LittleFS::open(intrusive_ref_ptr<FileBase> &file, StringPart &name,
 
 int miosix::LittleFS::open_directory(intrusive_ref_ptr<FileBase> &directory,
                                      StringPart &name, int flags, int mode) {
-  directory = intrusive_ref_ptr<LittleFSDirectory>(
-      new LittleFSDirectory(intrusive_ref_ptr<LittleFS>(this)));
+  auto dir = std::make_unique<lfs_dir_t>();
 
-  int err = lfs_dir_open(
-      &lfs,
-      static_cast<LittleFSDirectory *>(directory.get())->getDirReference(),
-      name.c_str());
+  int err = lfs_dir_open(&lfs, dir.get(), name.c_str());
   if (err) {
-    directory.reset();
     return convert_lfs_error_into_posix(err);
   }
 
-  static_cast<LittleFSDirectory *>(directory.get())->setAsOpen();
+  directory = intrusive_ref_ptr<LittleFSDirectory>(
+      new LittleFSDirectory(intrusive_ref_ptr<LittleFS>(this), std::move(dir)));
+
   return 0;
 }
 
 int miosix::LittleFS::open_file(intrusive_ref_ptr<FileBase> &file,
                                 StringPart &name, int flags, int mode) {
-  file = intrusive_ref_ptr<LittleFSFile>(
-      new LittleFSFile(intrusive_ref_ptr<LittleFS>(this), flags & O_SYNC));
+  auto lfs_file_obj = std::make_unique<lfs_file_t>();
 
-  int err = lfs_file_open(
-      &lfs, static_cast<LittleFSFile *>(file.get())->getFileReference(),
-      name.c_str(), convert_posix_open_to_lfs_flags(flags));
+  int err = lfs_file_open(&lfs, lfs_file_obj.get(), name.c_str(),
+                          convert_posix_open_to_lfs_flags(flags));
   if (err) {
-    file.reset();
     return convert_lfs_error_into_posix(err);
   }
-  static_cast<LittleFSFile *>(file.get())->setAsOpen();
+
+  file = intrusive_ref_ptr<LittleFSFile>(
+      new LittleFSFile(intrusive_ref_ptr<LittleFS>(this),
+                       std::move(lfs_file_obj), flags & O_SYNC, name));
 
   return 0;
 }
@@ -202,56 +199,90 @@ int miosix::convert_posix_open_to_lfs_flags(int posix_flags) {
 }
 
 int miosix::LittleFSFile::read(void *buf, size_t count) {
-  assert(isOpen);
+  assert(isOpen());
   // Get the LittleFS driver istance using getParent()
   LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
-  auto readSize = lfs_file_read(lfs_driver->getLfs(), &file, buf, count);
+  auto readSize = lfs_file_read(lfs_driver->getLfs(), file.get(), buf, count);
   return readSize;
 }
 
 int miosix::LittleFSFile::write(const void *buf, size_t count) {
-  assert(isOpen);
+  assert(isOpen());
   LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
-  auto writeSize = lfs_file_write(lfs_driver->getLfs(), &file, buf, count);
+  auto writeSize = lfs_file_write(lfs_driver->getLfs(), file.get(), buf, count);
   if (forceSync)
-    lfs_file_sync(lfs_driver->getLfs(), &file);
+    lfs_file_sync(lfs_driver->getLfs(), file.get());
   return writeSize;
 }
 
 off_t miosix::LittleFSFile::lseek(off_t pos, int whence) {
-  assert(isOpen);
-  // TODO: Implement using lfs APIs
-  return -ENOENT;
+  assert(isOpen());
+
+  lfs_whence_flags whence_lfs;
+  switch (whence) {
+  case SEEK_CUR:
+    whence_lfs = LFS_SEEK_CUR;
+    break;
+  case SEEK_SET:
+    whence_lfs = LFS_SEEK_SET;
+    break;
+  case SEEK_END:
+    whence_lfs = LFS_SEEK_END;
+    break;
+  default:
+    return -EINVAL;
+    break;
+  }
+
+  LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
+  off_t lfs_off = static_cast<off_t>(
+      lfs_file_seek(lfs_driver->getLfs(), file.get(),
+                    static_cast<lfs_off_t>(pos), whence_lfs));
+
+  return lfs_off;
 }
 
 int miosix::LittleFSFile::fstat(struct stat *pstat) const {
-  assert(isOpen);
-  // TODO: Implement using lfs APIs
-  return -ENOENT;
+  assert(isOpen());
+
+  LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
+  StringPart &nameClone = const_cast<StringPart &>(name);
+  lfs_driver->lstat(nameClone, pstat);
+
+  return 0;
 }
 
 int miosix::LittleFSDirectory::getdents(void *dp, int len) {
-  assert(isOpen);
+  assert(isOpen());
   if (len < minimumBufferSize) {
     return -EINVAL;
   }
 
   LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
-  lfs_info dirInfo;
 
   char *bufferBegin = static_cast<char *>(dp);
   char *bufferEnd = bufferBegin + len;
   char *bufferCurPos = bufferBegin; // Current position in the buffer
 
   int dirReadResult;
-  while ((dirReadResult = lfs_dir_read(lfs_driver->getLfs(), &dir, &dirInfo)) >=
-         0) {
+
+  if (directoryTraversalUnfinished) {
+    // Last time we did not have enough memory to store all the directory,
+    // continue from where we left
+    directoryTraversalUnfinished = false;
+    if (addEntry(&bufferCurPos, bufferEnd, -10,
+                 dirInfo.type == LFS_TYPE_REG ? DT_REG : DT_DIR,
+                 StringPart(dirInfo.name)) < 0) {
+      // ??? How is it possible that not even a single entry fits the buffer ???
+      return -ENOMEM;
+    }
+  }
+
+  while ((dirReadResult =
+              lfs_dir_read(lfs_driver->getLfs(), dir.get(), &dirInfo)) >= 0) {
     if (dirReadResult == 0) {
       // No more entries
-      if (addTerminatingEntry(&bufferCurPos, bufferEnd) < 0) {
-        // The terminating entry does not fit in the buffer
-        return -ENOMEM;
-      }
+      addTerminatingEntry(&bufferCurPos, bufferEnd);
       break;
     }
 
@@ -259,8 +290,9 @@ int miosix::LittleFSDirectory::getdents(void *dp, int len) {
     if (addEntry(&bufferCurPos, bufferEnd, -10,
                  dirInfo.type == LFS_TYPE_REG ? DT_REG : DT_DIR,
                  StringPart(dirInfo.name)) < 0) {
-      // The entry does not fit in the buffer
-      return -ENOMEM;
+      // The entry does not fit in the buffer. Signal that we did not finish
+      directoryTraversalUnfinished = true;
+      return bufferCurPos - bufferBegin;
     }
   };
 
@@ -308,24 +340,19 @@ int miosix::miosix_block_device_prog(const lfs_config *c, lfs_block_t block,
 
 int miosix::miosix_block_device_erase(const lfs_config *c, lfs_block_t block) {
   FileBase *drv = GET_DRIVER_FROM_LFS_CONTEXT(c);
-  int err = LFS_ERR_OK;
 
-  int *buffer = new int[c->block_size];
-  memset(buffer, 0, c->block_size);
+  std::unique_ptr<int> buffer(new int[c->block_size]);
+  memset(buffer.get(), 0, c->block_size);
 
   if (drv->lseek(static_cast<off_t>((block)*c->block_size), SEEK_SET) < 0) {
-    err = LFS_ERR_IO;
-    goto exit;
+    return LFS_ERR_IO;
   }
-  if (drv->write(buffer, c->block_size) !=
+  if (drv->write(buffer.get(), c->block_size) !=
       static_cast<ssize_t>(c->block_size)) {
-    err = LFS_ERR_IO;
-    goto exit;
+    return LFS_ERR_IO;
   }
 
-exit:
-  delete[] buffer;
-  return err;
+  return LFS_ERR_OK;
 }
 
 int miosix::miosix_block_device_sync(const lfs_config *c) {
