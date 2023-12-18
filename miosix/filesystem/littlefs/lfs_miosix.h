@@ -181,13 +181,9 @@ public:
   virtual int fstat(struct stat *pstat) const override;
 
   ~LittleFSFile() {
-    if (isOpen()) {
-      LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
-      lfs_file_close(lfs_driver->getLfs(), file.get());
-    }
+    LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
+    lfs_file_close(lfs_driver->getLfs(), file.get());
   }
-
-  bool isOpen() const { return file != nullptr; }
 
 private:
   std::unique_ptr<lfs_file_t> file;
@@ -215,13 +211,9 @@ public:
   virtual int getdents(void *dp, int len);
 
   ~LittleFSDirectory() {
-    if (!isOpen())
-      return;
     LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
     lfs_dir_close(lfs_driver->getLfs(), dir.get());
   };
-
-  bool isOpen() const { return dir != nullptr; }
 
 private:
   std::unique_ptr<lfs_dir_t> dir;

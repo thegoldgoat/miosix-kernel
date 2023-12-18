@@ -199,7 +199,6 @@ int miosix::convert_posix_open_to_lfs_flags(int posix_flags) {
 }
 
 int miosix::LittleFSFile::read(void *buf, size_t count) {
-  assert(isOpen());
   // Get the LittleFS driver istance using getParent()
   LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
   auto readSize = lfs_file_read(lfs_driver->getLfs(), file.get(), buf, count);
@@ -207,7 +206,6 @@ int miosix::LittleFSFile::read(void *buf, size_t count) {
 }
 
 int miosix::LittleFSFile::write(const void *buf, size_t count) {
-  assert(isOpen());
   LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
   auto writeSize = lfs_file_write(lfs_driver->getLfs(), file.get(), buf, count);
   if (forceSync)
@@ -216,7 +214,6 @@ int miosix::LittleFSFile::write(const void *buf, size_t count) {
 }
 
 off_t miosix::LittleFSFile::lseek(off_t pos, int whence) {
-  assert(isOpen());
 
   lfs_whence_flags whence_lfs;
   switch (whence) {
@@ -243,7 +240,6 @@ off_t miosix::LittleFSFile::lseek(off_t pos, int whence) {
 }
 
 int miosix::LittleFSFile::fstat(struct stat *pstat) const {
-  assert(isOpen());
 
   LittleFS *lfs_driver = static_cast<LittleFS *>(getParent().get());
   StringPart &nameClone = const_cast<StringPart &>(name);
@@ -253,7 +249,7 @@ int miosix::LittleFSFile::fstat(struct stat *pstat) const {
 }
 
 int miosix::LittleFSDirectory::getdents(void *dp, int len) {
-  assert(isOpen());
+
   if (len < minimumBufferSize) {
     return -EINVAL;
   }
