@@ -6,20 +6,12 @@
 #include <memory>
 
 // configuration of the filesystem is provided by this struct
-const struct lfs_config LITTLEFS_CONFIG = {
+const struct lfs_config EMPTY_CONFIG = {
     // block device operations
     .read = nullptr,
     .prog = nullptr,
     .erase = nullptr,
-    .sync = nullptr,
-
-    // block device configuration
-    .read_size = 512,
-    .prog_size = 512,
-    .block_size = 512,
-    .block_cycles = 500,
-    .cache_size = 512,
-    .lookahead_size = 512,
+    .sync = nullptr
 };
 
 miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
@@ -30,7 +22,15 @@ miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
       context(disk.get()) {
   int err;
   drv = disk;
-  config = LITTLEFS_CONFIG;
+
+  config = EMPTY_CONFIG;
+  config.read_size = 512;
+  config.prog_size = 512;
+  config.block_size = 512;
+  config.block_cycles = 500;
+  config.cache_size = 512;
+  config.lookahead_size = 512;
+
   config.context = &context;
 
   config.read = miosix_block_device_read;
@@ -40,7 +40,7 @@ miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
 
   config.lock = miosix_lfs_lock;
   config.unlock = miosix_lfs_unlock;
-
+  
   err = lfs_mount(&lfs, &config);
   mountError = convert_lfs_error_into_posix(err);
 }
@@ -97,7 +97,7 @@ int miosix::LittleFS::lstat(StringPart &name, struct stat *pstat) {
   memset(pstat, 0, sizeof(struct stat));
   pstat->st_dev = filesystemId;
   pstat->st_nlink = 1;
-  pstat->st_blksize = LITTLEFS_CONFIG.block_size;
+  pstat->st_blksize = config.block_size;
 
   if (name.empty()) {
     // Root directory
@@ -117,8 +117,8 @@ int miosix::LittleFS::lstat(StringPart &name, struct stat *pstat) {
   pstat->st_mode = lfsStat.type == LFS_TYPE_DIR ? S_IFDIR | 0755  // drwxr-xr-x
                                                 : S_IFREG | 0755; // -rwxr-xr-x
   pstat->st_size = lfsStat.size;
-  pstat->st_blocks = (lfsStat.size + LITTLEFS_CONFIG.block_size - 1) /
-                     LITTLEFS_CONFIG.block_size;
+  pstat->st_blocks = (lfsStat.size + config.block_size - 1) /
+                     config.block_size;
 
   return 0;
 }
