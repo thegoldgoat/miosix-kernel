@@ -135,11 +135,13 @@ int main() {
     iprintf("\tFound file: '%s'\n", filename);
     int foundFileFd = open(filename, O_RDONLY);
     iprintf("\t\tFile descriptor: %d\n", foundFileFd);
+    iprintf("\t\tFile ino by dirent: %ld\n", ent->d_ino);
     if (foundFileFd < 0) {
       perror("Error opening file");
     } else {
       struct stat pstat;
       if (fstat(foundFileFd, &pstat) == 0) {
+        iprintf("\t\tFile ino by fstat: %ld\n", pstat.st_ino);
         iprintf("\t\tFile size: %lld\n", pstat.st_size);
       } else {
         perror("Error getting file size");

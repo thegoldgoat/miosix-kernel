@@ -11,8 +11,7 @@ const struct lfs_config EMPTY_CONFIG = {
     .read = nullptr,
     .prog = nullptr,
     .erase = nullptr,
-    .sync = nullptr
-};
+    .sync = nullptr};
 
 miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
     : // Put the drive instance into the config context. Note that a raw pointer
@@ -40,7 +39,7 @@ miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
 
   config.lock = miosixLfsLock;
   config.unlock = miosixLfsUnlock;
-  
+
   err = lfs_mount(&lfs, &config);
   mountError = lfsErrorToPosix(err);
 }
@@ -74,7 +73,7 @@ int miosix::LittleFS::openDirectory(intrusive_ref_ptr<FileBase> &directory,
 }
 
 int miosix::LittleFS::openFile(intrusive_ref_ptr<FileBase> &file,
-                                StringPart &name, int flags, int mode) {
+                               StringPart &name, int flags, int mode) {
   auto lfs_file_obj = std::make_unique<lfs_file_t>();
 
   int err = lfs_file_open(&lfs, lfs_file_obj.get(), name.c_str(),
@@ -101,7 +100,6 @@ int miosix::LittleFS::lstat(StringPart &name, struct stat *pstat) {
 
   if (name.empty()) {
     // Root directory
-    // TODO: Check this is true?
     pstat->st_ino = 1;               // Root inode is 1 by convention
     pstat->st_mode = S_IFDIR | 0755; // drwxr-xr-x
     return 0;
@@ -113,12 +111,11 @@ int miosix::LittleFS::lstat(StringPart &name, struct stat *pstat) {
   if (err)
     return lfsErrorToPosix(err);
 
-  pstat->st_ino = -1; // TODO: Implement inode number on lfs
+  pstat->st_ino = lfsStat.block;
   pstat->st_mode = lfsStat.type == LFS_TYPE_DIR ? S_IFDIR | 0755  // drwxr-xr-x
                                                 : S_IFREG | 0755; // -rwxr-xr-x
   pstat->st_size = lfsStat.size;
-  pstat->st_blocks = (lfsStat.size + config.block_size - 1) /
-                     config.block_size;
+  pstat->st_blocks = (lfsStat.size + config.block_size - 1) / config.block_size;
 
   return 0;
 }
@@ -142,8 +139,6 @@ int miosix::LittleFS::rename(StringPart &oldName, StringPart &newName) {
 int miosix::LittleFS::mkdir(StringPart &name, int mode) {
   if (mountFailed())
     return -ENOENT;
-
-  // TODO: What to do with mode? Ignore it? Check that it is 0755?
 
   int err = lfs_mkdir(&lfs, name.c_str());
   return lfsErrorToPosix(err);
@@ -266,7 +261,7 @@ int miosix::LittleFSDirectory::getdents(void *dp, int len) {
     // Last time we did not have enough memory to store all the directory,
     // continue from where we left
     directoryTraversalUnfinished = false;
-    if (addEntry(&bufferCurPos, bufferEnd, -10,
+    if (addEntry(&bufferCurPos, bufferEnd, dirInfo.block,
                  dirInfo.type == LFS_TYPE_REG ? DT_REG : DT_DIR,
                  StringPart(dirInfo.name)) < 0) {
       // ??? How is it possible that not even a single entry fits the buffer ???
@@ -282,8 +277,7 @@ int miosix::LittleFSDirectory::getdents(void *dp, int len) {
       break;
     }
 
-    // TODO: Add correct inode number instead of `-10`
-    if (addEntry(&bufferCurPos, bufferEnd, -10,
+    if (addEntry(&bufferCurPos, bufferEnd, dirInfo.block,
                  dirInfo.type == LFS_TYPE_REG ? DT_REG : DT_DIR,
                  StringPart(dirInfo.name)) < 0) {
       // The entry does not fit in the buffer. Signal that we did not finish
@@ -305,8 +299,8 @@ int miosix::LittleFSDirectory::getdents(void *dp, int len) {
       static_cast<lfs_driver_context *>(config->context)->disk);
 
 int miosix::miosixBlockDeviceRead(const lfs_config *c, lfs_block_t block,
-                                     lfs_off_t off, void *buffer,
-                                     lfs_size_t size) {
+                                  lfs_off_t off, void *buffer,
+                                  lfs_size_t size) {
   FileBase *drv = GET_DRIVER_FROM_LFS_CONTEXT(c);
 
   if (drv->lseek(static_cast<off_t>(c->block_size * block + off), SEEK_SET) <
@@ -320,8 +314,8 @@ int miosix::miosixBlockDeviceRead(const lfs_config *c, lfs_block_t block,
 }
 
 int miosix::miosixBlockDeviceProg(const lfs_config *c, lfs_block_t block,
-                                     lfs_off_t off, const void *buffer,
-                                     lfs_size_t size) {
+                                  lfs_off_t off, const void *buffer,
+                                  lfs_size_t size) {
   FileBase *drv = GET_DRIVER_FROM_LFS_CONTEXT(c);
 
   if (drv->lseek(static_cast<off_t>(c->block_size * block + off), SEEK_SET) <
