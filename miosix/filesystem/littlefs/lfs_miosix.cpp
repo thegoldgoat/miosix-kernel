@@ -5,14 +5,6 @@
 #include <fcntl.h>
 #include <memory>
 
-// configuration of the filesystem is provided by this struct
-const struct lfs_config EMPTY_CONFIG = {
-    // block device operations
-    .read = nullptr,
-    .prog = nullptr,
-    .erase = nullptr,
-    .sync = nullptr};
-
 miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
     : // Put the drive instance into the config context. Note that a raw pointer
       // is passed, but the object is kept alive by the intrusive_ref_ptr in the
@@ -22,7 +14,7 @@ miosix::LittleFS::LittleFS(intrusive_ref_ptr<FileBase> disk)
   int err;
   drv = disk;
 
-  config = EMPTY_CONFIG;
+  config = {};
   config.read_size = 512;
   config.prog_size = 512;
   config.block_size = 512;
