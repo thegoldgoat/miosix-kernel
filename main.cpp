@@ -8,12 +8,14 @@
 #include <thread>
 #include <vector>
 
+#include <errno.h>
+
 using namespace std;
 using namespace miosix;
 
 void createDir(int dirNumber) {
   char dirname[25];
-  snprintf(dirname, sizeof(dirname), "/sd/directory%d", dirNumber);
+  snprintf(dirname, sizeof(dirname), "/sd/dir_%d", dirNumber);
   iprintf("Trying to create %s\n", dirname);
 
   mkdir(dirname, 0755);
@@ -27,7 +29,21 @@ void createDir(int dirNumber) {
 
 void deleteDir(int dirNumber) {
   char dirname[25];
-  snprintf(dirname, sizeof(dirname), "/sd/directory%d", dirNumber);
+  snprintf(dirname, sizeof(dirname), "/sd/dir_%d", dirNumber);
+  iprintf("Trying to delete %s\n", dirname);
+
+  rmdir(dirname);
+
+  struct stat sb;
+  if(stat(dirname, &sb) == 0)
+    iprintf("The folder %s exists (INCORRECT BEHAVIOUR)\n", dirname);
+  else
+    iprintf("The folder %s does not exist\n", dirname);
+}
+
+void deleteDir2(int dirNumber) {
+  char dirname[25];
+  snprintf(dirname, sizeof(dirname), "/sd/renamed_%d", dirNumber);
   iprintf("Trying to delete %s\n", dirname);
 
   rmdir(dirname);
@@ -41,15 +57,20 @@ void deleteDir(int dirNumber) {
 
 void renameDir(int dirNumber, int newDirNumber) {
   char dirname[25];
-  snprintf(dirname, sizeof(dirname), "/sd/directory%d", dirNumber);
+  snprintf(dirname, sizeof(dirname), "/sd/dir_%d", dirNumber);
 
   char newdirname[25];
-  snprintf(newdirname, sizeof(newdirname), "/sd/directory%d", newDirNumber);
+  snprintf(newdirname, sizeof(newdirname), "/sd/renamed_%d", newDirNumber);
 
-  rename(dirname, newdirname);
+  int err = rename(dirname, newdirname);
+  if(err != 0){
+    iprintf("Rename Error %d %d -> %d\n", err, dirNumber, newDirNumber);
+    iprintf("errno %d\n", errno);
+  }
+    
 
   struct stat sb;
-  if(stat(dirname, &sb) != 0 && stat(dirname, &sb), &sb)
+  if(stat(dirname, &sb) != 0 && stat(newdirname, &sb) == 0)
     iprintf("Rename went right. %d -> %d\n", dirNumber, newDirNumber);
   else
     iprintf("Rename went wrong.\n");
@@ -114,11 +135,13 @@ int main() {
     iprintf("\tFound file: '%s'\n", filename);
     int foundFileFd = open(filename, O_RDONLY);
     iprintf("\t\tFile descriptor: %d\n", foundFileFd);
+    iprintf("\t\tFile ino by dirent: %ld\n", ent->d_ino);
     if (foundFileFd < 0) {
       perror("Error opening file");
     } else {
       struct stat pstat;
       if (fstat(foundFileFd, &pstat) == 0) {
+        iprintf("\t\tFile ino by fstat: %ld\n", pstat.st_ino);
         iprintf("\t\tFile size: %lld\n", pstat.st_size);
       } else {
         perror("Error getting file size");
@@ -198,13 +221,13 @@ int main() {
 
   iprintf("--- Begin folder renaming test on multithreading ---\n");
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 5; i++) {
     createDir(i);
   }
 
   threads.clear();
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 5; i++) {
     threads.emplace_back(thread(renameDir, i, i + 10));
   }
 
@@ -212,7 +235,19 @@ int main() {
     t.join();
   }
 
+  for (int i = 0; i < 5; i++) {
+    deleteDir2(i + 10);
+  }
+
   iprintf("--- End folder renaming test on multithreading ---\n");
+
+  dir = opendir("/sd");
+  while ((ent = readdir(dir)) != NULL) {
+    char filename[200];
+    snprintf(filename, sizeof(filename), "/sd/%s", ent->d_name);
+    iprintf("\tFound file: '%s'\n", filename);
+  }
+  closedir(dir);
 
   iprintf("Main end\n");
 }
